@@ -1,0 +1,64 @@
+# Pattern 6 — CI flakiness fixes
+#
+# GitHub Actions workflow encoding four CI reliability patterns:
+#   1. Tight action timeout (8 s in playwright.config.js)
+#   2. networkidle navigation wait (handled in test code)
+#   3. Screenshot artifact upload on failure only
+#   4. TZ/LANG environment variable pinning
+#
+# See: https://getautonoma.com/blog/playwright-best-practices-2026
+
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Pin timezone and locale so date-formatting assertions are deterministic.
+env:
+  TZ: UTC
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+  CI: "true"
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npx playwright test --reporter=github
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-screenshots
+          path: test-results/**/*.png
+          retention-days: 7
+
+      - name: Upload trace artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/**/*.zip
+          retention-days: 7
